@@ -7,26 +7,97 @@
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <style>
-        :root { --orange: #ff4400; --dark: #121212; }
-        body { background: var(--dark); color: white; font-family: sans-serif; margin: 0; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
-        #map { flex-grow: 1; width: 100%; }
-        .ui-panel { background: #1e1e1e; padding: 15px; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; border-top: 3px solid var(--orange); }
-        .box { background: #2a2a2a; padding: 10px; border-radius: 8px; text-align: center; }
-        .box b { font-size: 1.8em; color: var(--orange); display: block; }
-        .btn-container { padding: 15px; background: #1e1e1e; }
-        button { width: 100%; padding: 18px; background: var(--orange); color: white; border: none; border-radius: 12px; font-size: 1.1em; font-weight: bold; cursor: pointer; }
-        button:disabled { background: #444; }
-        #status { font-size: 10px; color: #666; text-align: center; padding: 5px; }
+        :root { --orange: #ff4400; --dark: #121212; --panel: #1e1e1e; }
+        
+        * { box-sizing: border-box; }
+
+        body { 
+            background: var(--dark); 
+            color: white; 
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            margin: 0; 
+            display: flex; 
+            flex-direction: column; 
+            height: 100vh; /* Altura total de la ventana */
+            width: 100vw;
+            overflow: hidden; 
+        }
+
+        /* El mapa ocupa el espacio sobrante */
+        #map { 
+            flex: 1; 
+            width: 100%; 
+        }
+
+        #status { 
+            font-size: 11px; 
+            color: #888; 
+            text-align: center; 
+            padding: 5px;
+            background: var(--dark);
+        }
+
+        /* Panel inferior fijo */
+        .bottom-ui {
+            background: var(--panel);
+            border-top: 2px solid var(--orange);
+            padding: 10px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .stats-grid { 
+            display: grid; 
+            grid-template-columns: 1fr 1fr; 
+            gap: 10px; 
+        }
+
+        .box { 
+            background: #2a2a2a; 
+            padding: 8px; 
+            border-radius: 8px; 
+            text-align: center; 
+        }
+
+        .box b { font-size: 1.5em; color: var(--orange); display: block; }
+        .box span { font-size: 0.7em; color: #aaa; text-transform: uppercase; }
+
+        button { 
+            width: 100%; 
+            padding: 15px; 
+            background: var(--orange); 
+            color: white; 
+            border: none; 
+            border-radius: 10px; 
+            font-size: 1em; 
+            font-weight: bold; 
+            cursor: pointer;
+            touch-action: manipulation;
+        }
+
+        button:active { background: #cc3700; }
+        button:disabled { background: #444; color: #888; }
+
+        /* Estilo para el marcador del usuario */
+        .user-dot {
+            background: #0077ff;
+            border: 2px solid white;
+            border-radius: 50%;
+        }
     </style>
 </head>
 <body>
+
     <div id="map"></div>
+    
     <div id="status">Esperando señal GPS...</div>
-    <div class="ui-panel">
-        <div class="box"><span style="font-size:0.7em">DISTANCIA</span><b id="dist">---</b> m</div>
-        <div class="box"><span style="font-size:0.7em">RUMBO</span><b id="bear">---</b> °</div>
-    </div>
-    <div class="btn-container">
+
+    <div class="bottom-ui">
+        <div class="stats-grid">
+            <div class="box"><span>Distancia</span><b id="dist">---</b> m</div>
+            <div class="box"><span>Rumbo</span><b id="bear">---</b> °</div>
+        </div>
         <button id="btn" onclick="getWaypoint()">GENERAR RETO 4x4</button>
     </div>
 
@@ -39,52 +110,7 @@
 
         function updateUI(pos) {
             userPos = { lat: pos.coords.latitude, lng: pos.coords.longitude };
-            document.getElementById('status').innerText = `GPS OK | Precisión: ${Math.round(pos.coords.accuracy)}m`;
+            const acc = Math.round(pos.coords.accuracy);
+            document.getElementById('status').innerText = `Señal GPS activa (±${acc}m)`;
             
-            if (!userMarker) {
-                userMarker = L.circleMarker(userPos, { color: '#0077ff', radius: 10, fillOpacity: 1 }).addTo(map);
-                map.setView(userPos, 15);
-            } else {
-                userMarker.setLatLng(userPos);
-            }
-            calculateMetrics();
-        }
-
-        async function getWaypoint() {
-            if (!userPos) return alert("Sin señal GPS");
-            document.getElementById('btn').disabled = true;
-            document.getElementById('status').innerText = "Buscando pista de tierra...";
-
-            const q = `[out:json];way["highway"~"track|path"](around:4000,${userPos.lat},${userPos.lng});out geom;`;
-            try {
-                const res = await fetch("https://overpass-api.de/api/interpreter?data=" + encodeURIComponent(q));
-                const data = await res.json();
-                const way = data.elements[Math.floor(Math.random() * data.elements.length)];
-                const node = way.geometry[Math.floor(way.geometry.length / 2)];
-                
-                targetPos = { lat: node.lat, lng: node.lon };
-                if (targetMarker) map.removeLayer(targetMarker);
-                targetMarker = L.marker(targetPos).addTo(map);
-                map.fitBounds([userPos, targetPos], { padding: [50, 50] });
-                document.getElementById('status').innerText = "¡Reto fijado!";
-            } catch (e) {
-                alert("No hay pistas cerca. Intenta en otra zona.");
-            }
-            document.getElementById('btn').disabled = false;
-        }
-
-        function calculateMetrics() {
-            if (!userPos || !targetPos) return;
-            const p1 = L.latLng(userPos), p2 = L.latLng(targetPos);
-            document.getElementById('dist').innerText = Math.round(p1.distanceTo(p2));
-            
-            const dL = (p2.lng - p1.lng) * Math.PI/180;
-            const y = Math.sin(dL) * Math.cos(p2.lat * Math.PI/180);
-            const x = Math.cos(p1.lat * Math.PI/180) * Math.sin(p2.lat * Math.PI/180) - Math.sin(p1.lat * Math.PI/180) * Math.cos(p2.lat * Math.PI/180) * Math.cos(dL);
-            document.getElementById('bear').innerText = Math.round((Math.atan2(y, x) * 180/Math.PI + 360) % 360);
-        }
-
-        navigator.geolocation.watchPosition(updateUI, e => console.log(e), { enableHighAccuracy: true });
-    </script>
-</body>
-</html>
+            if (!</html>
